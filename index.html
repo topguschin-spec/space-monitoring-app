@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Космический мониторинг</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 100%); 
+            color: #ffffff; min-height: 100vh; 
+        }
+        .container { max-width: 400px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { font-size: 1.5em; margin-bottom: 5px; }
+        .status-indicator { font-size: 0.9em; color: #58a6ff; }
+        .sensors-grid { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; 
+        }
+        .sensor-card { 
+            background: rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 15px; 
+            text-align: center; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); 
+        }
+        .sensor-icon { font-size: 1.5em; margin-bottom: 5px; }
+        .sensor-value { font-size: 1.2em; font-weight: bold; margin-bottom: 5px; }
+        .sensor-label { font-size: 0.8em; opacity: 0.8; }
+        .chart-section, .control-section, .status-section { 
+            background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 15px; 
+            margin-bottom: 15px; border: 1px solid rgba(255, 255, 255, 0.1); 
+        }
+        button { 
+            background: rgba(88, 166, 255, 0.2); border: 1px solid #58a6ff; color: #58a6ff; 
+            padding: 12px; border-radius: 8px; font-size: 0.9em; cursor: pointer; transition: all 0.3s ease; 
+            width: 100%; margin: 5px 0;
+        }
+        button:hover { background: rgba(88, 166, 255, 0.3); }
+        .btn-primary { background: #238636; border-color: #238636; color: white; }
+        .btn-danger { background: #da3633; border-color: #da3633; color: white; }
+        .status-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .progress-bar { flex: 1; height: 6px; background: rgba(255, 255, 255, 0.2); border-radius: 3px; margin: 0 10px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #58a6ff, #1f6feb); border-radius: 3px; transition: width 0.3s ease; }
+        #chart-container { margin-top: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🚀 Космический мониторинг</h1>
+            <div class="status-indicator" id="status">🟢 ОНЛАЙН</div>
+        </header>
+
+        <div class="sensors-grid">
+            <div class="sensor-card"><div class="sensor-icon">🌡</div><div class="sensor-value" id="temperature">24.5°C</div><div class="sensor-label">Температура</div></div>
+            <div class="sensor-card"><div class="sensor-icon">☢️</div><div class="sensor-value" id="radiation">12500 лк</div><div class="sensor-label">Радиация</div></div>
+            <div class="sensor-card"><div class="sensor-icon">💧</div><div class="sensor-value" id="humidity">45%</div><div class="sensor-label">Влажность</div></div>
+            <div class="sensor-card"><div class="sensor-icon">🔋</div><div class="sensor-value" id="voltage">12.4V</div><div class="sensor-label">Напряжение</div></div>
+        </div>
+
+        <div class="control-section">
+            <h3>🎮 Управление системой</h3>
+            <div class="control-buttons">
+                <button class="btn-primary" onclick="toggleFan()" id="fan-btn">🌀 ВКЛ Вентилятор</button>
+                <button onclick="refreshData()">🔄 Обновить данные</button>
+                <button class="btn-danger" onclick="emergencyStop()">🚨 Аварийная остановка</button>
+            </div>
+        </div>
+
+        <div class="status-section">
+            <h3>🛰 Статус системы</h3>
+            <div class="status-item">
+                <span>Сигнал:</span><div class="progress-bar"><div class="progress-fill" id="signal-progress" style="width: 95%"></div></div><span id="signal-value">95%</span>
+            </div>
+            <div class="status-item">
+                <span>Энергия:</span><div class="progress-bar"><div class="progress-fill" id="energy-progress" style="width: 85%"></div></div><span id="energy-value">85%</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        let sensorData = {
+            temperature: 24.5, radiation: 12500, humidity: 45.0, voltage: 12.4,
+            signal: 95, energy: 85, fanStatus: false
+        };
+
+        function updateUI() {
+            document.getElementById('temperature').textContent = sensorData.temperature + '°C';
+            document.getElementById('radiation').textContent = sensorData.radiation + ' лк';
+            document.getElementById('humidity').textContent = sensorData.humidity + '%';
+            document.getElementById('voltage').textContent = sensorData.voltage + 'V';
+            document.getElementById('signal-progress').style.width = sensorData.signal + '%';
+            document.getElementById('signal-value').textContent = sensorData.signal + '%';
+            document.getElementById('energy-progress').style.width = sensorData.energy + '%';
+            document.getElementById('energy-value').textContent = sensorData.energy + '%';
+            updateFanButton();
+        }
+
+        function toggleFan() {
+            sensorData.fanStatus = !sensorData.fanStatus;
+            tg.sendData(JSON.stringify({ action: 'toggle_fan', status: sensorData.fanStatus }));
+            updateFanButton();
+            tg.showPopup({
+                title: sensorData.fanStatus ? '✅ Вентилятор включен' : '❌ Вентилятор выключен',
+                message: sensorData.fanStatus ? 'Система охлаждения активирована' : 'Система охлаждения остановлена',
+                buttons: [{ type: 'ok' }]
+            });
+        }
+
+        function updateFanButton() {
+            const btn = document.getElementById('fan-btn');
+            if (sensorData.fanStatus) {
+                btn.textContent = '❌ ВЫКЛ Вентилятор';
+                btn.className = 'btn-danger';
+            } else {
+                btn.textContent = '🌀 ВКЛ Вентилятор';
+                btn.className = 'btn-primary';
+            }
+        }
+
+        function refreshData() {
+            sensorData.temperature = (24.5 + (Math.random() - 0.5) * 2).toFixed(1);
+            sensorData.radiation = Math.floor(12500 + (Math.random() - 0.5) * 1000);
+            sensorData.humidity = (45.0 + (Math.random() - 0.5) * 5).toFixed(1);
+            updateUI();
+            tg.showPopup({
+                title: '✅ Данные обновлены',
+                message: 'Показания актуальны на ' + new Date().toLocaleTimeString(),
+                buttons: [{ type: 'ok' }]
+            });
+        }
+
+        function emergencyStop() {
+            tg.showConfirm('🚨 АВАРИЙНАЯ ОСТАНОВКА', 'Вы уверены?', function(result) {
+                if (result) {
+                    tg.sendData(JSON.stringify({ action: 'emergency_stop' }));
+                    tg.showPopup({ title: '🛑 Аварийная остановка', message: 'Система в безопасном режиме', buttons: [{ type: 'ok' }] });
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', updateUI);
+        tg.ready();
+    </script>
+</body>
+</html>
